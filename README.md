@@ -31,7 +31,6 @@ backend/
     routes/       # auth, tasks, categories, templates, pdf, admin
     crypto.py     # AES-128-GCM + Argon2id
     rate_limit.py # Sliding-Window-Rate-Limiter + Client-IP-Auflösung
-    backup.py     # SQLite-Online-Backup
     pdf_generator.py
     maintenance.py
   docker-entrypoint.sh  # chown + Drop-Privileges (unprivilegierter User)
@@ -70,7 +69,6 @@ Clients installieren (siehe „HTTPS / Caddy (Passkeys)“).
 Daten liegen unter `APPDATA_DIR` (Standard `/appdata/dumbbureau/`):
 
 - `db.sqlite` — Datenbank
-- `backups/` — automatische Online-Backups (siehe „Backup & Wiederherstellung“)
 - `templates/` — User-Templates
 - `exports/` — PDF-Exports
 - `logs/` — Logs
@@ -91,13 +89,12 @@ Zugriff läuft über Caddy.
 | `WEBAUTHN_RP_NAME` | Anzeigename der Relying Party |
 | `WEBAUTHN_ORIGIN` | Origin (mit Caddy: `https://<host>:8360`) |
 | `DATABASE_URL` | SQLite-Pfad (Container-intern) |
-| `APPDATA_DIR` | Host-Verzeichnis für DB/Templates/Exports/Logs/Backups |
+| `APPDATA_DIR` | Host-Verzeichnis für DB/Templates/Exports/Logs |
 | `TRUSTED_PROXY_IPS` | CIDR des Reverse-Proxy (internes Docker-Netz, Standard `172.28.1.0/24`) |
 | `CORS_ORIGINS` | Erlaubte Frontend-Origins (kommagetrennt) |
 | `RATE_LIMIT_ENABLED` | Rate Limiting an/aus (Standard `true`) |
 | `RATE_LIMIT_MAX_REQUESTS` | Max. Requests je Client & Fenster (Standard `30`) |
 | `RATE_LIMIT_WINDOW_SECONDS` | Fenstergröße in Sekunden (Standard `60`) |
-| `BACKUP_RETENTION` | Anzahl vorgehaltener Datenbank-Backups (Standard `7`) |
 | `CHALLENGE_TTL_SECONDS` | Gültigkeit der WebAuthn-Challenge (Standard `300`) |
 | `ACCESS_TOKEN_TTL_MINUTES` | JWT-Session-Gültigkeit (Standard `60`) |
 | `INVITE_TOKEN_TTL_DAYS` | Gültigkeit der Einladungen (Standard `7`) |
@@ -156,29 +153,6 @@ docker cp dumbbureau_caddy:/data/caddy/pki/authorities/local/root.crt ./caddy-ro
 Danach ist die App unter `https://<DUMBBUREAU_HOSTNAME>:8360` erreichbar;
 `http://<DUMBBUREAU_HOSTNAME>:8361` leitet auf HTTPS um. Backend und Frontend
 laufen nur intern (nicht auf den Host gepubliziert).
-
-## Backup & Wiederherstellung
-
-Die Datenbank läuft im **WAL-Modus** (`PRAGMA journal_mode=WAL`). Ein
-konsistentes Online-Backup erzeugt täglich der Wartungs-Loop automatisch in
-`<appdata>/backups/` (SQLite-`backup`-API, keine WAL-Races). Alternativ manuell:
-
-```bash
-docker compose exec backend python -m app.backup
-```
-
-Wiederherstellung (App vorher stoppen):
-
-```bash
-docker compose --profile caddy stop
-# aktuelles Backup zurückspielen
-cp <appdata>/backups/db-<timestamp>.sqlite <appdata>/db.sqlite
-docker compose --profile caddy up -d
-```
-
-Hinweis: Die Backups enthalten die **verschlüsselten** Daten. Zur Entschlüsselung
-wird derselbe `ENCRYPTION_KEY`/`SECRET_KEY` benötigt, der beim Erstellen aktiv war –
-diese Secrets unbedingt getrennt und sicher aufbewahren.
 
 ## Logs & Rotation
 

@@ -40,8 +40,6 @@ class Settings(BaseSettings):
     rate_limit_max_requests: int = 30
     rate_limit_window_seconds: int = 60
 
-    backup_retention: int = 7
-
     @property
     def templates_dir(self) -> Path:
         return self.appdata_dir / "templates"
@@ -53,10 +51,6 @@ class Settings(BaseSettings):
     @property
     def logs_dir(self) -> Path:
         return self.appdata_dir / "logs"
-
-    @property
-    def backups_dir(self) -> Path:
-        return self.appdata_dir / "backups"
 
     @property
     def cors_origins_list(self) -> list[str]:
@@ -75,7 +69,6 @@ class Settings(BaseSettings):
             self.templates_dir,
             self.exports_dir,
             self.logs_dir,
-            self.backups_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)
 

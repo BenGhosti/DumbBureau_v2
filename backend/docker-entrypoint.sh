@@ -15,7 +15,7 @@ DATA_DIR="${APPDATA_DIR:-/appdata/dumbbureau}"
 mkdir -p "$DATA_DIR"
 
 # Scoped chown so a large exports/ tree is not walked more than necessary.
-for dir in templates exports logs backups; do
+for dir in templates exports logs; do
     mkdir -p "$DATA_DIR/$dir"
     chown -R "$APP_UID:$APP_GID" "$DATA_DIR/$dir"
 done

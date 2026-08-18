@@ -36,7 +36,6 @@ check("caddy mounts Caddyfile read-only", "./Caddyfile:/etc/caddy/Caddyfile:ro" 
 backend_env = {e.split("=", 1)[0]: e.split("=", 1)[1] for e in services["backend"].get("environment", []) if "=" in e}
 check("backend TRUSTED_PROXY_IPS defaults to docker subnet", "172.28.1.0/24" in backend_env["TRUSTED_PROXY_IPS"])
 check("backend has RATE_LIMIT_* env", all(k in backend_env for k in ("RATE_LIMIT_ENABLED", "RATE_LIMIT_MAX_REQUESTS", "RATE_LIMIT_WINDOW_SECONDS")))
-check("backend has BACKUP_RETENTION env", "BACKUP_RETENTION" in backend_env)
 
 networks = compose.get("networks", {})
 check("fixed subnet 172.28.1.0/24 configured", networks["dumbbureau"]["ipam"]["config"][0]["subnet"] == "172.28.1.0/24")

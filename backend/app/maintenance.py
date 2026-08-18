@@ -45,12 +45,6 @@ async def run_daily_maintenance() -> None:
                 db.close()
         except Exception:
             logger.exception("Daily maintenance run failed")
-        try:
-            from .backup import backup_database
-
-            backup_database()
-        except Exception:
-            logger.exception("Daily database backup failed")
         await asyncio.sleep(24 * 60 * 60)
 
 
