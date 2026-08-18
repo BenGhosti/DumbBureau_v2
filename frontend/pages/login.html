@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>DumbBureau</title>
+  <link rel="stylesheet" href="../css/main.css">
+</head>
+<body class="auth-page">
+  <header class="auth-header">
+    <button class="theme-toggle" aria-label="Toggle dark mode">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path class="moon" d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        <circle class="sun" cx="12" cy="12" r="5" style="display:none"/>
+        <line class="sun" x1="12" y1="1" x2="12" y2="3" style="display:none"/>
+        <line class="sun" x1="12" y1="21" x2="12" y2="23" style="display:none"/>
+        <line class="sun" x1="4.22" y1="4.22" x2="5.64" y2="5.64" style="display:none"/>
+        <line class="sun" x1="18.36" y1="18.36" x2="19.78" y2="19.78" style="display:none"/>
+        <line class="sun" x1="1" y1="12" x2="3" y2="12" style="display:none"/>
+        <line class="sun" x1="21" y1="12" x2="23" y2="12" style="display:none"/>
+        <line class="sun" x1="4.22" y1="19.78" x2="5.64" y2="18.36" style="display:none"/>
+        <line class="sun" x1="18.36" y1="5.64" x2="19.78" y2="4.22" style="display:none"/>
+      </svg>
+    </button>
+    <svg class="brand-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9 11l3 3L22 4"/>
+      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+    </svg>
+    <h1>DumbBureau</h1>
+    <div class="lang-toggle">
+      <button id="lang-de" class="lang-btn">DE</button>
+      <button id="lang-en" class="lang-btn">EN</button>
+    </div>
+  </header>
+
+  <main class="auth-card">
+    <div id="auth-message" class="message hidden" role="status" aria-live="polite"></div>
+
+    <section id="login-form">
+      <h2 data-i18n="login_title">Anmeldung</h2>
+      <form id="loginForm">
+        <label for="login-username" data-i18n="username">Benutzername</label>
+        <input type="text" id="login-username" autocomplete="username webauthn" required autofocus>
+        <button type="submit" class="btn-passkey" id="login-submit">
+          <svg class="key-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            <circle cx="12" cy="16" r="1.5" fill="currentColor" stroke="none"></circle>
+          </svg>
+          <span class="key-spinner" style="display:none"></span>
+          <span class="btn-label" data-i18n="auth_with_key">Mit Passkey anmelden</span>
+        </button>
+      </form>
+      <p class="muted">
+        <button type="button" id="show-register" data-i18n="switch_to_register">Noch kein Konto? Registrieren</button>
+      </p>
+    </section>
+
+    <section id="register-form" class="hidden">
+      <h2 data-i18n="register_title">Registrierung</h2>
+      <p id="register-hint" class="muted hidden"></p>
+      <form id="registerForm">
+        <label for="reg-username" data-i18n="username">Benutzername</label>
+        <input type="text" id="reg-username" autocomplete="username" required>
+
+        <label for="reg-email" data-i18n="email">E-Mail (optional)</label>
+        <input type="email" id="reg-email" autocomplete="email">
+
+        <div id="secret-field" class="hidden">
+          <label for="reg-secret" data-i18n="admin_secret">Admin-Setup-Secret (nur Erst-Einrichtung)</label>
+          <input type="password" id="reg-secret" autocomplete="off">
+        </div>
+
+        <div id="invite-field" class="hidden">
+          <label for="reg-invite" data-i18n="invite_token">Einladungs-Code</label>
+          <input type="text" id="reg-invite" autocomplete="off">
+        </div>
+
+        <button type="submit" class="btn-passkey" id="register-submit">
+          <svg class="key-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            <circle cx="12" cy="16" r="1.5" fill="currentColor" stroke="none"></circle>
+          </svg>
+          <span class="key-spinner" style="display:none"></span>
+          <span class="btn-label" data-i18n="register_key">Passkey registrieren</span>
+        </button>
+      </form>
+      <p class="muted">
+        <button type="button" id="show-login" data-i18n="switch_to_login">Bereits registriert? Anmelden</button>
+      </p>
+    </section>
+  </main>
+
+  <script src="../js/theme.js"></script>
+  <script src="../js/storage.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/i18n.js"></script>
+  <script src="../js/api.js"></script>
+  <script src="../js/auth.js"></script>
+  <script>
+    (function () {
+      const message = document.getElementById('auth-message');
+      const loginForm = document.getElementById('login-form');
+      const registerForm = document.getElementById('register-form');
+
+      function showMessage(text, isError) {
+        message.textContent = text;
+        message.classList.toggle('error', !!isError);
+        message.classList.remove('hidden');
+      }
+
+      function hideMessage() { message.classList.add('hidden'); }
+
+      function toggleForms(showRegister) {
+        loginForm.classList.toggle('hidden', showRegister);
+        registerForm.classList.toggle('hidden', !showRegister);
+        hideMessage();
+      }
+
+      // Passkey-button state machine: idle -> busy (spinner) -> success (check, green)
+      // or back to idle on failure. Mirrors the key icon used across the app.
+      const keyIconSvg =
+        '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>' +
+        '<path d="M7 11V7a5 5 0 0 1 10 0v4"></path>' +
+        '<circle cx="12" cy="16" r="1.5" fill="currentColor" stroke="none"></circle>';
+      const checkIconSvg = '<polyline class="check-icon" points="20 6 9 17 4 12"></polyline>';
+
+      function setBusy(btn, busy) {
+        const spinner = btn.querySelector('.key-spinner');
+        const icon = btn.querySelector('.key-icon');
+        if (busy) {
+          btn.disabled = true;
+          spinner.style.display = 'inline-block';
+          icon.style.display = 'none';
+        } else {
+          btn.disabled = false;
+          spinner.style.display = 'none';
+          icon.style.display = '';
+        }
+      }
+
+      function setSuccess(btn) {
+        const spinner = btn.querySelector('.key-spinner');
+        const icon = btn.querySelector('.key-icon');
+        const label = btn.querySelector('.btn-label');
+        spinner.style.display = 'none';
+        icon.style.display = '';
+        icon.innerHTML = checkIconSvg;
+        btn.classList.add('success');
+        label.textContent = I18n.t('login_success');
+      }
+
+      document.getElementById('show-register').addEventListener('click', (e) => { e.preventDefault(); toggleForms(true); });
+      document.getElementById('show-login').addEventListener('click', (e) => { e.preventDefault(); toggleForms(false); });
+      document.getElementById('lang-de').addEventListener('click', () => I18n.setLanguage('de'));
+      document.getElementById('lang-en').addEventListener('click', () => I18n.setLanguage('en'));
+
+      // If already authenticated, go to app
+      if (Storage.isAuthenticated()) {
+        window.location.href = '../index.html';
+        return;
+      }
+
+      // Bootstrap: decide whether first-time setup (secret) or invite
+      Api.get('/auth/bootstrap')
+        .then((status) => {
+          if (status.users_exist) {
+            document.getElementById('invite-field').classList.remove('hidden');
+            document.getElementById('register-hint').textContent = I18n.t('have_invite_hint');
+            document.getElementById('register-hint').classList.remove('hidden');
+          } else {
+            document.getElementById('secret-field').classList.remove('hidden');
+            document.getElementById('register-hint').textContent = I18n.t('first_time_hint');
+            document.getElementById('register-hint').classList.remove('hidden');
+          }
+        })
+        .catch((e) => showMessage(e.message, true));
+
+      loginForm.querySelector('form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        hideMessage();
+        const btn = document.getElementById('login-submit');
+        const username = document.getElementById('login-username').value.trim();
+        if (!username) return;
+        setBusy(btn, true);
+        try {
+          await Auth.login({ username });
+          setSuccess(btn);
+          setTimeout(() => { window.location.href = '../index.html'; }, 500);
+        } catch (err) {
+          showMessage(err.message, true);
+          setBusy(btn, false);
+          const form = loginForm.querySelector('form');
+          form.classList.remove('shake');
+          void form.offsetWidth;
+          form.classList.add('shake');
+        }
+      });
+
+      registerForm.querySelector('form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        hideMessage();
+        const btn = document.getElementById('register-submit');
+        const username = document.getElementById('reg-username').value.trim();
+        const email = document.getElementById('reg-email').value.trim();
+        const inviteToken = document.getElementById('reg-invite').value.trim();
+        const adminSecret = document.getElementById('reg-secret').value.trim();
+        if (!username) return;
+        setBusy(btn, true);
+        try {
+          await Auth.register({ username, email, inviteToken, adminSecret });
+          setSuccess(btn);
+          setTimeout(() => { window.location.href = '../index.html'; }, 500);
+        } catch (err) {
+          showMessage(err.message, true);
+          setBusy(btn, false);
+          const form = registerForm.querySelector('form');
+          form.classList.remove('shake');
+          void form.offsetWidth;
+          form.classList.add('shake');
+        }
+      });
+
+      I18n.apply();
+    })();
+  </script>
+</body>
+</html>

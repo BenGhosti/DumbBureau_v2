@@ -1,0 +1,36 @@
+@media print {
+  .sidebar,
+  .toolbar button,
+  .modal-overlay,
+  #toast-container,
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger {
+    display: none !important;
+  }
+
+  body {
+    background: #fff;
+    color: #000;
+  }
+
+  .app-shell {
+    display: block;
+  }
+
+  .content {
+    padding: 0;
+  }
+
+  .card {
+    border: none;
+    background: #fff;
+    padding: 0;
+  }
+
+  .table th,
+  .table td {
+    border-bottom: 1px solid #ccc;
+    color: #000;
+  }
+}

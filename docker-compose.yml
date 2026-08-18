@@ -1,0 +1,92 @@
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  backend:
+    build: ./backend
+    container_name: dumbbureau_backend
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////appdata/dumbbureau/db.sqlite}
+      - APPDATA_DIR=${APPDATA_DIR:-/appdata/dumbbureau}
+      - ADMIN_RECOVERY_SECRET=${ADMIN_RECOVERY_SECRET:-LOCKED_UNTIL_ENV}
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Only the internal Docker network may set X-Forwarded-For; it must NOT
+      # include the LAN subnet or any client could spoof its source IP.
+      - TRUSTED_PROXY_IPS=${TRUSTED_PROXY_IPS:-172.28.1.0/24}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8360}
+      - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-localhost}
+      - WEBAUTHN_RP_NAME=${WEBAUTHN_RP_NAME:-DumbBureau}
+      - WEBAUTHN_ORIGIN=${WEBAUTHN_ORIGIN:-http://localhost:8360}
+      - CHALLENGE_TTL_SECONDS=${CHALLENGE_TTL_SECONDS:-300}
+      - ACCESS_TOKEN_TTL_MINUTES=${ACCESS_TOKEN_TTL_MINUTES:-60}
+      - INVITE_TOKEN_TTL_DAYS=${INVITE_TOKEN_TTL_DAYS:-7}
+      - RECOVERY_TOKEN_TTL_MINUTES=${RECOVERY_TOKEN_TTL_MINUTES:-30}
+      - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED:-true}
+      - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS:-30}
+      - RATE_LIMIT_WINDOW_SECONDS=${RATE_LIMIT_WINDOW_SECONDS:-60}
+      - BACKUP_RETENTION=${BACKUP_RETENTION:-7}
+    volumes:
+      - ${APPDATA_DIR:-/appdata/dumbbureau}:/appdata/dumbbureau
+    restart: unless-stopped
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - dumbbureau
+
+  frontend:
+    build: ./frontend
+    container_name: dumbbureau_frontend
+    depends_on:
+      - backend
+    restart: unless-stopped
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/index.html"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - dumbbureau
+
+  # Optional HTTPS reverse proxy. Enabled only when the `caddy` profile is
+  # selected: `docker compose --profile caddy up -d`. WebAuthn/Passkeys require
+  # HTTPS, so production/LAN deployments should always run this profile.
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: dumbbureau_caddy
+    profiles: ["caddy"]
+    ports:
+      - "8360:8360"
+      - "8361:8361"
+    environment:
+      - DUMBBUREAU_HOSTNAME=${DUMBBUREAU_HOSTNAME:-dumbbureau.local}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+    restart: unless-stopped
+    logging: *default-logging
+    networks:
+      - dumbbureau
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  dumbbureau:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.1.0/24

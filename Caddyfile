@@ -1,0 +1,35 @@
+# DumbBureau Caddy reverse proxy
+# -----------------------------------------------------------------------------
+# Caddy terminates TLS so WebAuthn/Passkeys get the "secure context" (HTTPS)
+# they require. It fronts the nginx frontend container, which serves the SPA
+# and proxies /api/ to the backend.
+#
+# DUMBBUREAU_HOSTNAME must be set to the DNS name or LAN IP the app is reached
+# at (NO scheme, NO port), e.g. `dumbbureau.local` or `192.168.188.50`.
+# WEBAUTHN_RP_ID must match it exactly.
+# -----------------------------------------------------------------------------
+{
+	# The admin API is not needed and would be an extra attack surface.
+	admin off
+
+	# Caddy listens on these ports *inside* the container. docker-compose maps
+	# them 1:1 to the host so redirects and links carry the right port numbers.
+	http_port 8361
+	https_port 8360
+}
+
+# Plain HTTP (8361) -> permanent redirect to HTTPS (8360).
+http://{$DUMBBUREAU_HOSTNAME} {
+	redir https://{$DUMBBUREAU_HOSTNAME}:8360{uri} permanent
+}
+
+# Main HTTPS entry point. `tls internal` uses Caddy's local CA, so the cert is
+# self-signed: import the CA into client devices once (see README) to get a
+# green lock, or accept the one-time browser warning.
+{$DUMBBUREAU_HOSTNAME} {
+	tls internal
+
+	encode zstd gzip
+
+	reverse_proxy frontend:80
+}

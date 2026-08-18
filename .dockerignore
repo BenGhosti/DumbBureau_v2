@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.git
+.gitignore
+*.sqlite
+*.sqlite3
+appdata/
+*.log
+.DS_Store
