@@ -40,7 +40,6 @@ frontend/
   pages/login.html
   js/             # api, auth, views, i18n, ...
   css/
-Caddyfile         # Reverse-Proxy / TLS (Profil `caddy`)
 docker-compose.yml
 ```
 
@@ -49,22 +48,21 @@ docker-compose.yml
 ```bash
 # 1. Konfiguration vorbereiten
 cp .env.example .env
-# SECRET_KEY, ADMIN_RECOVERY_SECRET, DUMBBUREAU_HOSTNAME,
-# WEBAUTHN_RP_ID/ORIGIN setzen (siehe unten)
+# SECRET_KEY, ADMIN_RECOVERY_SECRET, WEBAUTHN_RP_ID/ORIGIN setzen (siehe unten)
 
-# 2. Bauen und starten (mit HTTPS-Reverse-Proxy via Caddy)
-docker compose --profile caddy up -d --build
+# 2. Bauen und starten
+docker compose up -d --build
 ```
 
-WebAuthn/Passkeys benötigen einen **sicheren Kontext** (HTTPS). Deshalb gibt es ein
-optionales Caddy-Profil, das TLS übernimmt und die App unter **Port 8360 (HTTPS)**
-bereitstellt; Port **8361** leitet auf HTTPS um. Ohne das Profil (`docker compose up -d`)
-laufen nur Backend/Frontend **intern** (nicht vom Host erreichbar) – das ist nur für
-lokale Tests gedacht, wo `http://localhost` als sicherer Kontext gilt.
+Die App **benötigt einen Reverse Proxy mit HTTPS** (WebAuthn/Passkeys verlangen
+einen sicheren Kontext). Dafür wird dein eigener Reverse Proxy (nginx, Nginx
+Proxy Manager, Traefik …) verwendet – die App bringt **keinen** eigenen
+TLS-Terminator mit.
 
-Caddy nutzt `tls internal` (selbstsigniertes Zertifikat über eine lokale CA). Damit
-Passkeys im LAN ohne Browser-Warnung funktionieren, die Caddy-CA einmalig auf den
-Clients installieren (siehe „HTTPS / Caddy (Passkeys)“).
+- **Frontend** wird auf Host-Port `8360` publiziert (`FRONTEND_PORT`).
+- **Backend** optional auf `8361` (`BACKEND_PORT`), nur für Debug/API-Zugriff.
+- Dein Reverse Proxy terminiert TLS und zeigt seinen Upstream auf
+  `http://<docker-host>:8360`.
 
 Daten liegen unter `APPDATA_DIR` (Standard `/appdata/dumbbureau/`):
 
@@ -73,24 +71,21 @@ Daten liegen unter `APPDATA_DIR` (Standard `/appdata/dumbbureau/`):
 - `exports/` — PDF-Exports
 - `logs/` — Logs
 
-Die App ist unter `https://<DUMBBUREAU_HOSTNAME>:8360` erreichbar. Backend und
-Frontend werden **nicht** direkt auf den Host publiziert – der gesamte externe
-Zugriff läuft über Caddy.
-
 ## Umgebungsvariablen (`.env`)
 
 | Variable | Beschreibung |
 |---|---|
-| `DUMBBUREAU_HOSTNAME` | DNS-Name oder LAN-IP der App (kein Schema/Port); muss `WEBAUTHN_RP_ID` entsprechen |
+| `FRONTEND_PORT` | Host-Port der Web-App (Standard `8360`), Ziel deines Reverse Proxys |
+| `BACKEND_PORT` | Host-Port der API (Standard `8361`), nur für Debug |
 | `SECRET_KEY` | JWT-Signatur (mind. 32 Zeichen, `openssl rand -hex 32`) |
 | `ENCRYPTION_KEY` | Optional, Schlüssel für AES-128-GCM (Fallback: `SECRET_KEY`) |
 | `ADMIN_RECOVERY_SECRET` | Secret für den allerersten (Admin-)User |
-| `WEBAUTHN_RP_ID` | Registrierbare Domain (mit Caddy: `DUMBBUREAU_HOSTNAME`) |
+| `WEBAUTHN_RP_ID` | Registrierbare Domain (deine Subdomain, kein Schema/Port) |
 | `WEBAUTHN_RP_NAME` | Anzeigename der Relying Party |
-| `WEBAUTHN_ORIGIN` | Origin (mit Caddy: `https://<host>:8360`) |
+| `WEBAUTHN_ORIGIN` | Origin (Schema+Host, z. B. `https://dumbbureau.example.com`) |
 | `DATABASE_URL` | SQLite-Pfad (Container-intern) |
 | `APPDATA_DIR` | Host-Verzeichnis für DB/Templates/Exports/Logs |
-| `TRUSTED_PROXY_IPS` | CIDR des Reverse-Proxy (internes Docker-Netz, Standard `172.28.1.0/24`) |
+| `TRUSTED_PROXY_IPS` | Feste IP deines Reverse Proxys + Docker-Bridge-Bereich `172.16.0.0/12` |
 | `CORS_ORIGINS` | Erlaubte Frontend-Origins (kommagetrennt) |
 | `RATE_LIMIT_ENABLED` | Rate Limiting an/aus (Standard `true`) |
 | `RATE_LIMIT_MAX_REQUESTS` | Max. Requests je Client & Fenster (Standard `30`) |
@@ -101,9 +96,8 @@ Zugriff läuft über Caddy.
 | `RECOVERY_TOKEN_TTL_MINUTES` | Gültigkeit der Recovery-Tokens (Standard `30`) |
 | `LOG_LEVEL` | Log-Level (Standard `INFO`) |
 
-**Lokal testen (ohne Caddy):** Die Defaults (`RP_ID=localhost`, Origin
-`http://localhost:8360`) passen für `http://localhost:8360`. Dafür Frontend/Backend
-kurzzeitig auf den Host publizieren oder den Caddy-Stack mit `localhost`-Hostname nutzen.
+**Lokal testen:** Die Defaults (`RP_ID=localhost`, Origin `http://localhost:8360`)
+passen für `http://localhost:8360` (localhost gilt als sicherer Kontext).
 
 ## Erst-Einrichtung
 
@@ -118,47 +112,46 @@ kurzzeitig auf den Host publizieren oder den Caddy-Stack mit `localhost`-Hostnam
 
 - WebAuthn erfordert einen **sicheren Kontext** (HTTPS) oder `localhost`.
 - `WEBAUTHN_RP_ID` muss exakt der Domain entsprechen, unter der die App
-  erreichbar ist (kein Schema/Port); `WEBAUTHN_ORIGIN` ist Schema+Host+Port.
+  erreichbar ist (kein Schema/Port); `WEBAUTHN_ORIGIN` ist Schema+Host(+Port).
 - Bei Subpath-Deployment (`PUBLIC_URL=/dumbbureau`) den Reverse-Proxy so
   konfigurieren, dass `/dumbbureau/...` auf den Frontend-Container und
   `/dumbbureau/api/...` auf den Backend-Container zeigt.
 
-## HTTPS / Caddy (Passkeys im LAN)
+## Reverse Proxy / HTTPS (Passkeys)
 
-WebAuthn funktioniert über eine LAN-IP ohne HTTPS nicht. Das Caddy-Profil löst
-das mit `tls internal` (lokale CA, selbstsigniertes Zertifikat):
-
-```bash
-# .env
-DUMBBUREAU_HOSTNAME=dumbbureau.local   # oder die LAN-IP, z.B. 192.168.188.50
-WEBAUTHN_RP_ID=dumbbureau.local        # identisch zu DUMBBUREAU_HOSTNAME
-WEBAUTHN_ORIGIN=https://dumbbureau.local:8360
-CORS_ORIGINS=https://dumbbureau.local:8360
-
-docker compose --profile caddy up -d --build
-```
-
-Caddy-CA einmalig auf den Clients installieren, damit das Zertifikat als
-vertrauenswürdig gilt (sonst zeigt der Browser eine Warnung, die man einmalig
-bestätigen muss):
+Dein Reverse Proxy terminiert TLS und leitet intern (HTTP) an den
+Docker-Host auf `FRONTEND_PORT` (8360) weiter. Damit WebAuthn sauber läuft:
 
 ```bash
-# CA aus dem caddy_data-Volume exportieren:
-docker cp dumbbureau_caddy:/data/caddy/pki/authorities/local/root.crt ./caddy-root.crt
-# Auf Windows (Admin):   certutil -addstore -f "Root" caddy-root.crt
-# Auf macOS:             sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain caddy-root.crt
-# Auf Linux:             sudo cp caddy-root.crt /usr/local/share/ca-certificates/caddy-root.crt && sudo update-ca-certificates
+# .env (Subdomain-Beispiel — deine echte Domain in deiner lokalen .env)
+WEBAUTHN_RP_ID=dumbbureau.example.com
+WEBAUTHN_ORIGIN=https://dumbbureau.example.com
+CORS_ORIGINS=https://dumbbureau.example.com
+
+# Feste IP deines Reverse Proxys (damit die Client-IP korrekt erkannt wird)
+TRUSTED_PROXY_IPS=192.168.1.2, 172.16.0.0/12
+
+docker compose up -d --build
 ```
 
-Danach ist die App unter `https://<DUMBBUREAU_HOSTNAME>:8360` erreichbar;
-`http://<DUMBBUREAU_HOSTNAME>:8361` leitet auf HTTPS um. Backend und Frontend
-laufen nur intern (nicht auf den Host gepubliziert).
+Dein Reverse Proxy muss `X-Real-IP` (bzw. `X-Forwarded-For`) mit der echten
+Client-IP setzen und an den Frontend-Container weitergeben. Das Frontend leitet
+beide Header an das Backend weiter, damit das Rate-Limiting pro Client (statt
+pro Proxy) greift.
 
 ## Logs & Rotation
 
 Die Container-Logs werden über den Docker-JSON-Driver rotiert
 (`max-size=10m`, `max-file=3`, in `docker-compose.yml` zentral definiert).
-Anzeigen mit `docker compose logs -f backend` bzw. `docker compose --profile caddy logs -f caddy`.
+Anzeigen mit `docker compose logs -f backend` bzw. `docker compose logs -f frontend`.
+
+## Backup (extern)
+
+Backups laufen bewusst **außerhalb** der App (z. B. via Unraid). Der
+`APPDATA_DIR` liegt im WAL-Modus vor; für ein konsistentes Backup bitte
+`db.sqlite` **inklusive** `db.sqlite-wal` und `db.sqlite-shm` sichern (oder die
+Container kurz stoppen). Die Daten sind verschlüsselt – zur Wiederherstellung
+wird derselbe `ENCRYPTION_KEY`/`SECRET_KEY` benötigt.
 
 ## Tests
 

@@ -119,13 +119,13 @@ Backend: FastAPI + SQLAlchemy 2 + SQLite · Frontend: Vanilla JS SPA (nginx) · 
 
 | Feature | Umsetzung |
 |---|---|
-| Ports | Extern nur über Caddy: **8360** (HTTPS) + **8361** (HTTP→HTTPS-Redirect). Backend (8000)/Frontend (80) laufen intern im Docker-Netz (`172.28.1.0/24`) und sind nicht auf den Host publiziert |
+| Ports | Frontend auf Host-Port **8360** (`FRONTEND_PORT`), Backend optional **8361** (`BACKEND_PORT`). TLS endet am eigenen Reverse Proxy; Standard-Docker-Bridge (keine feste Subnetz-Konfiguration) |
 | Volle Env-Konfigurierbarkeit | Alle Variablen in `.env`/`.env.example` (Secrets, WebAuthn, TTLs, Pfade, Rate Limiting, Logging) — pydantic-settings + Compose-Defaults |
 | Daten-Haltbarkeit | `APPDATA_DIR` (Host) → `/appdata/dumbbureau` (Container): db.sqlite, templates/, exports/, logs/ |
 | Healthcheck | Backend `curl -f /health` (Compose), Auto-Restart `unless-stopped` |
-| Datenbank | SQLite (WAL-Modus), `create_all` beim Start (idempotent), 11 Tabellen |
+| Datenbank | SQLite (WAL-Modus), `create_all` beim Start (idempotent), 11 Tabellen; Backups extern (z. B. Unraid) |
 | Logging | Log-Level via Env, robuster Parse (Fallback INFO), Warnungen bei schwachem `SECRET_KEY`/unset `ADMIN_RECOVERY_SECRET`, globaler 500-Handler; Docker-Log-Rotation (`max-size=10m`, `max-file=3`) |
-| nginx | `client_max_body_size 5m`, `/api/`-Proxy mit `proxy_read_timeout 300s`, SPA-Fallback, `.dockerignore` verhindert Auslieferung von `nginx.conf` |
+| nginx | `client_max_body_size 5m`, `/api/`-Proxy mit `proxy_read_timeout 300s`, leitet `X-Real-IP`/`X-Forwarded-For` des Reverse Proxys durch, SPA-Fallback |
 
 ## 11. Tests & Qualität
 

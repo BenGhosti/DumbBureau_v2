@@ -17,46 +17,40 @@ def load_compose() -> dict:
         return yaml.safe_load(f)
 
 
-def load_caddyfile() -> str:
-    return (ROOT / "Caddyfile").read_text(encoding="utf-8")
-
-
 # --- docker-compose.yml -----------------------------------------------------
 compose = load_compose()
 services = compose["services"]
 
-check("caddy service exists", "caddy" in services)
-caddy = services.get("caddy", {})
-check("caddy uses the `caddy` profile", "caddy" in caddy.get("profiles", []))
-caddy_ports = caddy.get("ports", [])
-check("caddy exposes 8360", "8360:8360" in caddy_ports)
-check("caddy exposes 8361", "8361:8361" in caddy_ports)
-check("caddy mounts Caddyfile read-only", "./Caddyfile:/etc/caddy/Caddyfile:ro" in caddy.get("volumes", []))
+# Caddy must be gone: TLS is handled by the operator's own reverse proxy.
+check("no caddy service", "caddy" not in services)
+check("no caddy volumes", "caddy_data" not in compose.get("volumes", {}))
+check("Caddyfile removed", not (ROOT / "Caddyfile").exists())
+
+check("frontend publishes 8360", "${FRONTEND_PORT:-8360}:80" in services["frontend"].get("ports", []))
+check("backend publishes 8361", "${BACKEND_PORT:-8361}:8000" in services["backend"].get("ports", []))
 
 backend_env = {e.split("=", 1)[0]: e.split("=", 1)[1] for e in services["backend"].get("environment", []) if "=" in e}
-check("backend TRUSTED_PROXY_IPS defaults to docker subnet", "172.28.1.0/24" in backend_env["TRUSTED_PROXY_IPS"])
+check("backend TRUSTED_PROXY_IPS defaults to docker range", "172.16.0.0/12" in backend_env["TRUSTED_PROXY_IPS"])
 check("backend has RATE_LIMIT_* env", all(k in backend_env for k in ("RATE_LIMIT_ENABLED", "RATE_LIMIT_MAX_REQUESTS", "RATE_LIMIT_WINDOW_SECONDS")))
 
-networks = compose.get("networks", {})
-check("fixed subnet 172.28.1.0/24 configured", networks["dumbbureau"]["ipam"]["config"][0]["subnet"] == "172.28.1.0/24")
+# No custom/fixed docker subnet: standard bridge network, host ports only.
+check("no fixed docker subnet configured", "networks" not in compose)
 
 check("log rotation set on backend", services["backend"].get("logging", {}).get("driver") == "json-file")
 check("log rotation max-size set", services["backend"]["logging"]["options"].get("max-size") == "10m")
 
-# backend/frontend must not be reachable from the host directly: all external
-# traffic should go through Caddy (which is the only service publishing ports).
-check("backend publishes no host port", "ports" not in services["backend"])
-check("frontend publishes no host port", "ports" not in services["frontend"])
+# --- frontend nginx.conf ----------------------------------------------------
+nginx_conf = (ROOT / "frontend" / "nginx.conf").read_text(encoding="utf-8")
+check("nginx preserves X-Real-IP (no $remote_addr overwrite)",
+      "proxy_set_header X-Real-IP $http_x_real_ip;" in nginx_conf)
+check("nginx proxies /api to backend", "proxy_pass http://backend:8000;" in nginx_conf)
 
-# --- Caddyfile --------------------------------------------------------------
-caddyfile = load_caddyfile()
-check("Caddyfile uses DUMBBUREAU_HOSTNAME env var", "{$DUMBBUREAU_HOSTNAME}" in caddyfile)
-check("Caddyfile enables tls internal", "tls internal" in caddyfile)
-check("Caddyfile proxies to frontend:80", "reverse_proxy frontend:80" in caddyfile)
-check("Caddyfile binds HTTP port 8361", "http_port 8361" in caddyfile)
-check("Caddyfile binds HTTPS port 8360", "https_port 8360" in caddyfile)
-check("Caddyfile disables admin API", "admin off" in caddyfile)
-check("no on-demand TLS", "on_demand" not in caddyfile)
-check("no catch-all site block", "{:443}" not in caddyfile and "{:80}" not in caddyfile)
+# --- .env.example -----------------------------------------------------------
+env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
+check("env template uses placeholder domain (no real domain)",
+      "dumbbureau.example.com" in env_example and "WEBAUTHN_RP_ID=dumbbureau.example.com" in env_example)
+check("env template no Caddy hostname var", "DUMBBUREAU_HOSTNAME" not in env_example)
+check("env template documents proxy IP + docker range",
+      "TRUSTED_PROXY_IPS=" in env_example and "172.16.0.0/12" in env_example)
 
 print("\nALL PROXY CONFIG TESTS PASSED")

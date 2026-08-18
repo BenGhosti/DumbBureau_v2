@@ -8,6 +8,10 @@ services:
   backend:
     build: ./backend
     container_name: dumbbureau_backend
+    ports:
+      # Optional direct access to the API for debugging; the web app only needs
+      # the frontend (nginx) which proxies /api/ to this container internally.
+      - "${BACKEND_PORT:-8361}:8000"
     environment:
       - DATABASE_URL=${DATABASE_URL:-sqlite:////appdata/dumbbureau/db.sqlite}
       - APPDATA_DIR=${APPDATA_DIR:-/appdata/dumbbureau}
@@ -15,9 +19,11 @@ services:
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      # Only the internal Docker network may set X-Forwarded-For; it must NOT
-      # include the LAN subnet or any client could spoof its source IP.
-      - TRUSTED_PROXY_IPS=${TRUSTED_PROXY_IPS:-172.28.1.0/24}
+      # Trusted reverse proxies (CIDRs, comma separated). Must contain your
+      # reverse proxy's fixed IP and the Docker bridge range so the internal
+      # frontend->backend hop is recognized as a proxy (for correct real
+      # client IP in rate limiting). Never trust the whole LAN subnet.
+      - TRUSTED_PROXY_IPS=${TRUSTED_PROXY_IPS:-172.16.0.0/12}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8360}
       - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-localhost}
       - WEBAUTHN_RP_NAME=${WEBAUTHN_RP_NAME:-DumbBureau}
@@ -38,12 +44,13 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    networks:
-      - dumbbureau
 
   frontend:
     build: ./frontend
     container_name: dumbbureau_frontend
+    ports:
+      # Your reverse proxy (nginx, TLS) points its upstream at this host port.
+      - "${FRONTEND_PORT:-8360}:80"
     depends_on:
       - backend
     restart: unless-stopped
@@ -53,39 +60,3 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    networks:
-      - dumbbureau
-
-  # Optional HTTPS reverse proxy. Enabled only when the `caddy` profile is
-  # selected: `docker compose --profile caddy up -d`. WebAuthn/Passkeys require
-  # HTTPS, so production/LAN deployments should always run this profile.
-  caddy:
-    image: caddy:2.8-alpine
-    container_name: dumbbureau_caddy
-    profiles: ["caddy"]
-    ports:
-      - "8360:8360"
-      - "8361:8361"
-    environment:
-      - DUMBBUREAU_HOSTNAME=${DUMBBUREAU_HOSTNAME:-dumbbureau.local}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - frontend
-    restart: unless-stopped
-    logging: *default-logging
-    networks:
-      - dumbbureau
-
-volumes:
-  caddy_data:
-  caddy_config:
-
-networks:
-  dumbbureau:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.28.1.0/24

@@ -27,8 +27,12 @@ check("limiter blocks beyond max", rl.allow("k") is False)
 check("limiter keeps keys independent", rl.allow("other") is True)
 
 # --- 2. Client IP extraction behind trusted proxies ------------------------
-def _req(xff: str | None, peer: str = "172.28.1.6") -> SimpleNamespace:
-    headers = {"x-forwarded-for": xff} if xff is not None else {}
+def _req(xff: str | None, peer: str = "172.28.1.6", x_real_ip: str | None = None) -> SimpleNamespace:
+    headers: dict = {}
+    if xff is not None:
+        headers["x-forwarded-for"] = xff
+    if x_real_ip is not None:
+        headers["x-real-ip"] = x_real_ip
     return SimpleNamespace(headers=headers, client=SimpleNamespace(host=peer))
 
 check(
@@ -40,6 +44,14 @@ check(
     get_client_ip(_req("172.28.1.2, 172.28.1.5")) == "172.28.1.6",
 )
 check("no xff uses direct peer", get_client_ip(_req(None, peer="203.0.113.9")) == "203.0.113.9")
+check(
+    "x-real-ip honored from trusted peer",
+    get_client_ip(_req(None, x_real_ip="203.0.113.99")) == "203.0.113.99",
+)
+check(
+    "x-real-ip ignored from untrusted peer",
+    get_client_ip(_req(None, peer="203.0.113.5", x_real_ip="1.2.3.4")) == "203.0.113.5",
+)
 
 # --- 3. User enumeration: unknown username must not 404 --------------------
 db = SessionLocal()

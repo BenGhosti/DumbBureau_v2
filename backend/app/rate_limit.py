@@ -31,18 +31,29 @@ def _is_trusted(ip_str: str) -> bool:
 def get_client_ip(request: Request) -> str:
     """Resolve the real client IP, honoring trusted reverse proxies.
 
-    ``X-Forwarded-For`` is a comma-separated chain appended left-to-right as a
-    request passes proxies. We walk it right-to-left: the first (rightmost)
-    address that is NOT a trusted proxy is the originating client. If the whole
-    chain is trusted (or the header is absent), fall back to the direct peer.
+    Resolution order:
+      1. If the direct peer is a trusted proxy and ``X-Real-IP`` is set, use it
+         (common single-hop real-IP convention, e.g. Nginx Proxy Manager or a
+         proxy forwarding Cloudflare's real IP).
+      2. Otherwise walk ``X-Forwarded-For`` right-to-left; the first address
+         that is NOT a trusted proxy is the originating client.
+      3. Otherwise fall back to the direct peer address.
     """
+    peer = request.client.host if request.client else "unknown"
+
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip and _is_trusted(peer):
+        real_ip = real_ip.strip()
+        if real_ip:
+            return real_ip
+
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
         parts = [p.strip() for p in forwarded.split(",") if p.strip()]
         for ip in reversed(parts):
             if not _is_trusted(ip):
                 return ip
-    return request.client.host if request.client else "unknown"
+    return peer
 
 
 class SlidingWindowRateLimiter:
