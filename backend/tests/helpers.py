@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 
 RP_ID = "localhost"
-ORIGIN = "http://localhost:8360"
+ORIGIN = "http://localhost:8600"
 
 DEFAULT_ENV = {
     "ADMIN_RECOVERY_SECRET": "test-admin-secret",
@@ -19,10 +19,6 @@ DEFAULT_ENV = {
     "ENCRYPTION_KEY": "a-dedicated-encryption-key-for-tests",
     "WEBAUTHN_RP_ID": RP_ID,
     "WEBAUTHN_ORIGIN": ORIGIN,
-    "TRUSTED_PROXY_IPS": "172.28.1.0/24",
-    # Auth suites issue many requests from the same test client; disable the
-    # rate limiter so functional tests stay deterministic.
-    "RATE_LIMIT_ENABLED": "false",
 }
 
 

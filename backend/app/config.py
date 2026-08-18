@@ -19,11 +19,12 @@ class Settings(BaseSettings):
     # Falls back to SECRET_KEY when empty.
     encryption_key: str = ""
     log_level: str = "INFO"
-    # Only proxies in these CIDRs are trusted to set X-Forwarded-For (used to
-    # resolve the real client IP for rate limiting). This is the *internal*
-    # Docker network (see docker-compose networks.dumbbureau.ipam), NOT the LAN
-    # subnet — trusting the LAN would let any client spoof its source IP.
-    trusted_proxy_ips: str = "172.28.1.0/24"
+    # No default here on purpose: this must be YOUR reverse proxy's fixed
+    # IP (see .env.example). An empty value means client_ip() never trusts
+    # X-Forwarded-For/X-Real-IP and always falls back to the direct TCP
+    # peer - safe-by-default rather than guessing a network that may not
+    # match your actual proxy setup.
+    trusted_proxy_ips: str = ""
     cors_origins: str = "http://localhost:8360"
     appdata_dir: Path = Path("/appdata/dumbbureau")
 
@@ -35,10 +36,6 @@ class Settings(BaseSettings):
     access_token_ttl_minutes: int = 60
     invite_token_ttl_days: int = 7
     recovery_token_ttl_minutes: int = 30
-
-    rate_limit_enabled: bool = True
-    rate_limit_max_requests: int = 30
-    rate_limit_window_seconds: int = 60
 
     @property
     def templates_dir(self) -> Path:
@@ -65,11 +62,7 @@ class Settings(BaseSettings):
         ]
 
     def ensure_dirs(self) -> None:
-        for directory in (
-            self.templates_dir,
-            self.exports_dir,
-            self.logs_dir,
-        ):
+        for directory in (self.templates_dir, self.exports_dir, self.logs_dir):
             directory.mkdir(parents=True, exist_ok=True)
 
 

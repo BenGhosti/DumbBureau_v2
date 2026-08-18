@@ -35,7 +35,6 @@ from ..auth_utils import (
 from ..config import settings
 from ..database import get_db
 from ..dependencies import get_current_user, require_admin
-from ..rate_limit import rate_limited
 from ..models import (
     AuthChallenge,
     InviteToken,
@@ -44,6 +43,7 @@ from ..models import (
     RecoveryToken,
     User,
 )
+from ..rate_limit import enforce_auth_rate_limit
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -143,7 +143,7 @@ def _normalize_username(username: str) -> str:
 def register_options(
     body: RegisterOptionsRequest,
     db: Session = Depends(get_db),
-    _: None = Depends(rate_limited("register")),
+    _rl: None = Depends(enforce_auth_rate_limit),
 ):
     username = _normalize_username(body.username)
 
@@ -222,7 +222,7 @@ def register_options(
 def register_verify(
     body: RegisterVerifyRequest,
     db: Session = Depends(get_db),
-    _: None = Depends(rate_limited("register")),
+    _rl: None = Depends(enforce_auth_rate_limit),
 ):
     challenge = _get_challenge(db, body.challenge_id, "registration")
 
@@ -291,7 +291,7 @@ def register_verify(
 def login_options(
     body: LoginOptionsRequest,
     db: Session = Depends(get_db),
-    _: None = Depends(rate_limited("login")),
+    _rl: None = Depends(enforce_auth_rate_limit),
 ):
     allow_credentials = None
     user: User | None = None
@@ -303,10 +303,13 @@ def login_options(
             .filter(User.username == username, User.archived_at.is_(None))
             .first()
         )
-        # Do NOT return 404 for an unknown username: that leaks which accounts
-        # exist (user enumeration). Instead fall through to a usernameless
-        # (discoverable-credential) challenge, exactly as if no username had
-        # been supplied. A valid passkey still authenticates its owner.
+        # Deliberately NOT raising 404 when the username doesn't exist: doing
+        # so lets anyone on the network enumerate valid usernames just by
+        # probing this endpoint, with no authentication required. Instead we
+        # fall through to the same discoverable-credential challenge shape
+        # used when no username is given at all - the browser's passkey
+        # prompt looks identical either way, and login/verify still rejects
+        # the attempt on its own merits.
         if user is not None:
             passkeys = db.query(Passkey).filter(Passkey.user_id == user.id).all()
             allow_credentials = [
@@ -337,7 +340,7 @@ def login_options(
 def login_verify(
     body: LoginVerifyRequest,
     db: Session = Depends(get_db),
-    _: None = Depends(rate_limited("login")),
+    _rl: None = Depends(enforce_auth_rate_limit),
 ):
     challenge = _get_challenge(db, body.challenge_id, "authentication")
 
@@ -408,7 +411,6 @@ def trigger_recovery(
     body: RecoveryRequest,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
-    _: None = Depends(rate_limited("recovery")),
 ):
     target = db.get(User, body.target_user_id)
     if target is None or target.archived_at is not None:
@@ -459,7 +461,7 @@ def _get_valid_recovery_token(db: Session, raw_token: str) -> RecoveryToken:
 def recovery_options(
     body: RecoveryOptionsRequest,
     db: Session = Depends(get_db),
-    _: None = Depends(rate_limited("recovery")),
+    _rl: None = Depends(enforce_auth_rate_limit),
 ):
     recovery_token = _get_valid_recovery_token(db, body.recovery_token)
     target = db.get(User, recovery_token.user_id)
@@ -484,7 +486,7 @@ def recovery_options(
 def recovery_verify(
     body: RecoveryVerifyRequest,
     db: Session = Depends(get_db),
-    _: None = Depends(rate_limited("recovery")),
+    _rl: None = Depends(enforce_auth_rate_limit),
 ):
     recovery_token = _get_valid_recovery_token(db, body.recovery_token)
     challenge = _get_challenge(db, body.challenge_id, "recovery_registration")
