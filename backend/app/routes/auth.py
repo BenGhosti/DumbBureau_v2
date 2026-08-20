@@ -17,7 +17,6 @@ from webauthn import (
     verify_registration_response,
 )
 from webauthn.helpers.structs import (
-    AuthenticatorAttachment,
     AuthenticatorSelectionCriteria,
     PublicKeyCredentialDescriptor,
     ResidentKeyRequirement,
@@ -69,6 +68,9 @@ class RegisterOptionsRequest(BaseModel):
 class RegisterVerifyRequest(BaseModel):
     challenge_id: str
     credential: dict
+    # Optional user-chosen label for this passkey (e.g. "iPhone", "YubiKey").
+    # Falls back to a device-type-based default when omitted.
+    passkey_name: str | None = None
 
 
 class LoginOptionsRequest(BaseModel):
@@ -92,6 +94,21 @@ class RecoveryVerifyRequest(BaseModel):
     recovery_token: str
     challenge_id: str
     credential: dict
+
+
+class AddPasskeyVerifyRequest(BaseModel):
+    challenge_id: str
+    credential: dict
+    passkey_name: str | None = None
+
+
+class RemovePasskeyVerifyRequest(BaseModel):
+    challenge_id: str
+    credential: dict
+
+
+class RenamePasskeyRequest(BaseModel):
+    name: str
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +137,13 @@ def _registration_options(user_id: str, username: str, challenge: bytes) -> dict
         authenticator_selection=AuthenticatorSelectionCriteria(
             resident_key=ResidentKeyRequirement.REQUIRED,
             user_verification=UserVerificationRequirement.REQUIRED,
-            authenticator_attachment=AuthenticatorAttachment.CROSS_PLATFORM,
+            # No authenticator_attachment restriction: allow both platform
+            # authenticators (Face ID, Touch ID, Windows Hello) and
+            # cross-platform ones (YubiKey, other security keys). The
+            # previous CROSS_PLATFORM-only setting silently excluded phone/
+            # OS-level passkeys, which is the opposite of what usernameless
+            # login needs - the whole point is the browser showing every
+            # passkey the user has, not just external keys.
         ),
     )
     return json.loads(options_to_json(options))
@@ -134,6 +157,21 @@ def _normalize_username(username: str) -> str:
             detail="Username must be 1-64 characters",
         )
     return username
+
+
+def _default_passkey_name(device_type: object, requested: str | None) -> str:
+    if requested:
+        name = requested.strip()
+        if name:
+            return name[:100]
+    # CredentialDeviceType.MULTI_DEVICE means a synced/platform passkey
+    # (Face ID, Touch ID, Windows Hello, Google Password Manager, ...) -
+    # SINGLE_DEVICE means a bound authenticator (security key). Neither
+    # tells us the exact device model without an AAGUID lookup database,
+    # which is more complexity than this needs; the user can always rename
+    # it from the passkey management UI afterwards.
+    value = getattr(device_type, "value", str(device_type))
+    return "Passkey (this device)" if value == "multi_device" else "Security key"
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +292,7 @@ def register_verify(
         credential_id=verification.credential_id,
         public_key=verification.credential_public_key,
         sign_count=verification.sign_count,
+        name=_default_passkey_name(verification.credential_device_type, body.passkey_name),
     )
     db.add(passkey)
 
@@ -383,6 +422,7 @@ def login_verify(
         )
 
     passkey.sign_count = verification.new_sign_count
+    passkey.last_used_at = utcnow()
     challenge.used_at = utcnow()
 
     user = db.get(User, passkey.user_id)
@@ -515,6 +555,7 @@ def recovery_verify(
         credential_id=verification.credential_id,
         public_key=verification.credential_public_key,
         sign_count=verification.sign_count,
+        name=_default_passkey_name(verification.credential_device_type, None),
     )
     db.add(passkey)
 
@@ -531,3 +572,237 @@ def recovery_verify(
     db.commit()
 
     return {"registered": True, "user_id": recovery_token.user_id}
+
+
+# ---------------------------------------------------------------------------
+# Passkey management (logged-in user manages their own passkeys)
+# ---------------------------------------------------------------------------
+@router.get("/passkeys")
+def list_passkeys(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    passkeys = (
+        db.query(Passkey)
+        .filter(Passkey.user_id == user.id)
+        .order_by(Passkey.created_at.asc())
+        .all()
+    )
+    return [
+        {
+            "id": pk.id,
+            "name": pk.name,
+            "created_at": pk.created_at.isoformat(),
+            "last_used_at": pk.last_used_at.isoformat() if pk.last_used_at else None,
+        }
+        for pk in passkeys
+    ]
+
+
+@router.post("/passkeys/add/options")
+def add_passkey_options(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    _rl: None = Depends(enforce_auth_rate_limit),
+):
+    """Start adding an additional passkey to the currently logged-in user.
+
+    Unlike initial registration, this requires an existing valid session
+    (get_current_user) - you can't use this to register a brand new
+    account, only to attach one more credential to the account you're
+    already authenticated as.
+    """
+    challenge_bytes = secrets.token_bytes(32)
+    challenge = AuthChallenge(
+        challenge=challenge_bytes,
+        purpose="add_passkey",
+        user_id=user.id,
+        username=user.username,
+        expires_at=utcnow() + timedelta(seconds=settings.challenge_ttl_seconds),
+    )
+    db.add(challenge)
+    db.commit()
+
+    return {
+        "challenge_id": challenge.id,
+        "options": _registration_options(user.id, user.username, challenge_bytes),
+    }
+
+
+@router.post("/passkeys/add/verify")
+def add_passkey_verify(
+    body: AddPasskeyVerifyRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    _rl: None = Depends(enforce_auth_rate_limit),
+):
+    challenge = _get_challenge(db, body.challenge_id, "add_passkey")
+    if challenge.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Challenge does not belong to this user"
+        )
+
+    try:
+        verification = verify_registration_response(
+            credential=body.credential,
+            expected_challenge=challenge.challenge,
+            expected_rp_id=settings.webauthn_rp_id,
+            expected_origin=settings.webauthn_origin,
+            require_user_verification=True,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Registration verification failed: {exc}",
+        )
+
+    passkey = Passkey(
+        user_id=user.id,
+        credential_id=verification.credential_id,
+        public_key=verification.credential_public_key,
+        sign_count=verification.sign_count,
+        name=_default_passkey_name(verification.credential_device_type, body.passkey_name),
+    )
+    db.add(passkey)
+    challenge.used_at = utcnow()
+
+    log_audit(db, action="passkey_added", user_id=user.id)
+
+    db.commit()
+
+    return {"id": passkey.id, "name": passkey.name}
+
+
+@router.post("/passkeys/{passkey_id}/remove/options")
+def remove_passkey_options(
+    passkey_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    _rl: None = Depends(enforce_auth_rate_limit),
+):
+    """Start removing a passkey - requires authenticating with THAT SPECIFIC
+    passkey as confirmation, not just the current session. This is
+    deliberate: a stolen/leaked session token alone should never be enough
+    to strip a user's other passkeys - the removal has to be proven with
+    the credential being removed itself, which only the legitimate device
+    owner can produce.
+    """
+    target = db.get(Passkey, passkey_id)
+    if target is None or target.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Passkey not found"
+        )
+
+    challenge_bytes = secrets.token_bytes(32)
+    challenge = AuthChallenge(
+        challenge=challenge_bytes,
+        purpose="remove_passkey",
+        user_id=user.id,
+        expires_at=utcnow() + timedelta(seconds=settings.challenge_ttl_seconds),
+    )
+    db.add(challenge)
+    db.commit()
+
+    options = generate_authentication_options(
+        rp_id=settings.webauthn_rp_id,
+        challenge=challenge_bytes,
+        allow_credentials=[PublicKeyCredentialDescriptor(id=target.credential_id)],
+        user_verification=UserVerificationRequirement.REQUIRED,
+    )
+
+    return {"challenge_id": challenge.id, "options": json.loads(options_to_json(options))}
+
+
+@router.post("/passkeys/{passkey_id}/remove/verify")
+def remove_passkey_verify(
+    passkey_id: str,
+    body: RemovePasskeyVerifyRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    _rl: None = Depends(enforce_auth_rate_limit),
+):
+    challenge = _get_challenge(db, body.challenge_id, "remove_passkey")
+    if challenge.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Challenge does not belong to this user"
+        )
+
+    target = db.get(Passkey, passkey_id)
+    if target is None or target.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Passkey not found"
+        )
+
+    raw_id = body.credential.get("rawId") or body.credential.get("id")
+    try:
+        credential_id = webauthn.base64url_to_bytes(raw_id)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid credential id"
+        )
+
+    # The credential presented must be the SAME one being removed - proves
+    # the requester actually holds this specific passkey, not just any
+    # passkey belonging to the account.
+    if credential_id != target.credential_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Must authenticate with the passkey being removed",
+        )
+
+    remaining_count = (
+        db.query(func.count(Passkey.id)).filter(Passkey.user_id == user.id).scalar()
+    )
+    if remaining_count <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot remove your last passkey - you would be locked out",
+        )
+
+    try:
+        verify_authentication_response(
+            credential=body.credential,
+            expected_challenge=challenge.challenge,
+            expected_rp_id=settings.webauthn_rp_id,
+            expected_origin=settings.webauthn_origin,
+            credential_public_key=target.public_key,
+            credential_current_sign_count=target.sign_count,
+            require_user_verification=True,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Authentication failed: {exc}",
+        )
+
+    challenge.used_at = utcnow()
+    db.delete(target)
+
+    log_audit(db, action="passkey_removed", user_id=user.id)
+
+    db.commit()
+
+    return {"removed": True, "id": passkey_id}
+
+
+@router.patch("/passkeys/{passkey_id}")
+def rename_passkey(
+    passkey_id: str,
+    body: RenamePasskeyRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    target = db.get(Passkey, passkey_id)
+    if target is None or target.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Passkey not found"
+        )
+    name = body.name.strip()
+    if not name or len(name) > 100:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Name must be 1-100 characters",
+        )
+    target.name = name
+    db.commit()
+    return {"id": target.id, "name": target.name}

@@ -2,12 +2,10 @@ services:
   backend:
     build: ./backend
     container_name: dumbbureau_backend
-    # Mapped to the host so you/your reverse proxy can reach it directly if
-    # needed (debugging, emergency access) - but nothing in this stack
-    # advertises or routes public traffic to it. Normal traffic always goes
-    # through your own nginx -> frontend -> backend (Docker-internal).
-    ports:
-      - "${BACKEND_PORT:-8361}:8000"
+    # No host port mapping: nothing external needs to reach this container
+    # directly. All traffic goes through your own nginx -> frontend ->
+    # backend (Docker-internal only). Removes the host-port collision risk
+    # entirely instead of just moving it to a different number.
     environment:
       - DATABASE_URL=${DATABASE_URL:-sqlite:////appdata/dumbbureau/db.sqlite}
       - APPDATA_DIR=${APPDATA_DIR:-/appdata/dumbbureau}
@@ -15,6 +13,7 @@ services:
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - SHOW_LANGUAGE_TOGGLE=${SHOW_LANGUAGE_TOGGLE:-false}
       - TRUSTED_PROXY_IPS=${TRUSTED_PROXY_IPS:-}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8360}
       - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-localhost}

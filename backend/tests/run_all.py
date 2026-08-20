@@ -7,6 +7,7 @@ from pathlib import Path
 TESTS = [
     "test_crypto.py",
     "test_auth_flow.py",
+    "test_passkey_management.py",
     "test_rate_limit.py",
     "test_tasks.py",
     "test_categories_templates.py",

@@ -84,3 +84,15 @@ def health() -> JSONResponse:
         logger.exception("Health check: database unreachable")
         return JSONResponse(status_code=503, content={"status": "error", "detail": "database unreachable"})
     return JSONResponse(status_code=200, content={"status": "ok"})
+
+
+@app.get("/api/config")
+def public_config() -> dict:
+    """Read-only, non-sensitive frontend behavior flags.
+
+    The frontend is static (no build step), so an env-controlled UI toggle
+    like SHOW_LANGUAGE_TOGGLE has no other way to reach the browser at
+    load time. Keep this endpoint free of anything sensitive - it's
+    unauthenticated by design, same as /health.
+    """
+    return {"show_language_toggle": settings.show_language_toggle}

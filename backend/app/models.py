@@ -64,7 +64,12 @@ class Passkey(Base):
     )
     public_key: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     sign_count: Mapped[int] = mapped_column(Integer, default=0)
+    # User-facing label so multiple passkeys can be told apart in the UI
+    # ("YubiKey", "iPhone"). Best-effort default is set from the device
+    # type detected at registration time; the user can rename it later.
+    name: Mapped[str] = mapped_column(String(100), default="Passkey")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="passkeys")
 

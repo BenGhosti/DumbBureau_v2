@@ -10,7 +10,6 @@ window.I18n = (() => {
       invite_token: 'Einladungs-Code',
       login_title: 'Anmeldung',
       register_title: 'Registrierung',
-      auth_with_key: 'Mit Passkey anmelden',
       register_key: 'Passkey registrieren',
       logout: 'Abmelden',
       first_time_hint: 'Kein Benutzer vorhanden – bitte mit Admin-Setup-Secret registrieren.',
@@ -24,11 +23,44 @@ window.I18n = (() => {
       switch_to_register: 'Noch kein Konto? Registrieren',
       login_success: 'Erfolgreich!',
 
+      // Usernameless login
+      auth_with_passkey: 'Mit Passkey anmelden',
+      passkey_hint: 'Wähle deinen Passkey aus der Systemauswahl.',
+      or_type_username: 'oder Benutzernamen eingeben',
+
+      // Time-of-day greeting (welcome_morning/afternoon/evening/night take {{user}})
+      welcome_morning: 'Guten Morgen, {{user}}!',
+      welcome_afternoon: 'Willkommen zurück, {{user}}!',
+      welcome_evening: 'Guten Abend, {{user}}!',
+      welcome_night: 'Noch wach, {{user}}?',
+
+      // Passkey management
+      passkeys_title: 'Passkeys',
+      passkeys_desc: 'Verwalte die Passkeys, mit denen du dich anmelden kannst.',
+      add_passkey: 'Passkey hinzufügen',
+      passkey_name_label: 'Name',
+      rename_passkey: 'Umbenennen',
+      remove_passkey: 'Entfernen',
+      remove_passkey_confirm_title: 'Passkey entfernen',
+      remove_passkey_confirm_desc: 'Zum Entfernen musst du dich mit genau diesem Passkey bestätigen.',
+      remove_passkey_confirm_action: 'Mit diesem Passkey bestätigen',
+      last_passkey_warning: 'Das ist dein letzter Passkey und kann nicht entfernt werden.',
+      passkey_added: 'Passkey hinzugefügt',
+      passkey_removed: 'Passkey entfernt',
+      passkey_renamed: 'Passkey umbenannt',
+      no_passkeys: 'Keine Passkeys.',
+      last_used: 'Zuletzt verwendet',
+      never_used: 'Noch nie verwendet',
+      created: 'Erstellt',
+      new_passkey_name_prompt: 'Name für den neuen Passkey (z. B. "iPhone", "YubiKey")',
+
       nav_dashboard: 'Übersicht',
       nav_categories: 'Kategorien',
       nav_templates: 'Templates',
       nav_export: 'PDF-Export',
       nav_admin: 'Admin',
+      nav_profile: 'Profil',
+      profile_title: 'Profil & Einstellungen',
 
       add_task: 'Neue Tätigkeit',
       edit_task: 'Tätigkeit bearbeiten',
@@ -50,6 +82,8 @@ window.I18n = (() => {
       next_month: 'Nächster Monat',
       quick_add: 'Schnell-Erfassung',
       today: 'Heute',
+      tasks_this_month: 'Tätigkeiten diesen Monat',
+      categories_used: 'Genutzte Kategorien',
 
       categories_title: 'Kategorien',
       category_name: 'Name',
@@ -116,7 +150,6 @@ window.I18n = (() => {
       invite_token: 'Invite code',
       login_title: 'Sign in',
       register_title: 'Register',
-      auth_with_key: 'Authenticate with passkey',
       register_key: 'Register passkey',
       logout: 'Sign out',
       first_time_hint: 'No users yet – register using the admin setup secret.',
@@ -130,11 +163,44 @@ window.I18n = (() => {
       switch_to_register: 'No account yet? Register',
       login_success: 'Success!',
 
+      // Usernameless login
+      auth_with_passkey: 'Sign in with passkey',
+      passkey_hint: 'Choose your passkey from the system prompt.',
+      or_type_username: 'or type your username',
+
+      // Time-of-day greeting (welcome_morning/afternoon/evening/night take {{user}})
+      welcome_morning: 'Good morning, {{user}}!',
+      welcome_afternoon: 'Welcome back, {{user}}!',
+      welcome_evening: 'Good evening, {{user}}!',
+      welcome_night: 'Still online, {{user}}?',
+
+      // Passkey management
+      passkeys_title: 'Passkeys',
+      passkeys_desc: 'Manage the passkeys you can sign in with.',
+      add_passkey: 'Add passkey',
+      passkey_name_label: 'Name',
+      rename_passkey: 'Rename',
+      remove_passkey: 'Remove',
+      remove_passkey_confirm_title: 'Remove passkey',
+      remove_passkey_confirm_desc: 'To remove it, confirm with this exact passkey.',
+      remove_passkey_confirm_action: 'Confirm with this passkey',
+      last_passkey_warning: 'This is your last passkey and cannot be removed.',
+      passkey_added: 'Passkey added',
+      passkey_removed: 'Passkey removed',
+      passkey_renamed: 'Passkey renamed',
+      no_passkeys: 'No passkeys.',
+      last_used: 'Last used',
+      never_used: 'Never used',
+      created: 'Created',
+      new_passkey_name_prompt: 'Name for the new passkey (e.g. "iPhone", "YubiKey")',
+
       nav_dashboard: 'Dashboard',
       nav_categories: 'Categories',
       nav_templates: 'Templates',
       nav_export: 'PDF Export',
       nav_admin: 'Admin',
+      nav_profile: 'Profile',
+      profile_title: 'Profile & Settings',
 
       add_task: 'New task',
       edit_task: 'Edit task',
@@ -156,6 +222,8 @@ window.I18n = (() => {
       next_month: 'Next month',
       quick_add: 'Quick add',
       today: 'Today',
+      tasks_this_month: 'Tasks this month',
+      categories_used: 'Categories used',
 
       categories_title: 'Categories',
       category_name: 'Name',
@@ -217,7 +285,7 @@ window.I18n = (() => {
   let lang = Storage.getLanguage();
 
   function t(key, vars) {
-    const str = (translations[lang] && translations[lang][key]) || translations.de[key] || key;
+    const str = (translations[lang] && translations[lang][key]) || translations.en[key] || key;
     if (vars && typeof vars === 'object') {
       return str.replace(/\{\{(\w+)\}\}/g, (m, k) => vars[k] !== undefined ? vars[k] : m);
     }
@@ -225,7 +293,7 @@ window.I18n = (() => {
   }
 
   function setLanguage(l) {
-    if (!translations[l]) l = 'de';
+    if (!translations[l]) l = 'en';
     lang = l;
     Storage.setLanguage(l);
     apply();

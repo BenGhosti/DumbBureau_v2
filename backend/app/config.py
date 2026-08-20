@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     invite_token_ttl_days: int = 7
     recovery_token_ttl_minutes: int = 30
 
+    # Frontend behavior flags, exposed read-only via GET /api/config so the
+    # static (build-step-free) frontend can pick them up at load time
+    # without needing its own templating/build system.
+    show_language_toggle: bool = False
+
     @property
     def templates_dir(self) -> Path:
         return self.appdata_dir / "templates"

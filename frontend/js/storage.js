@@ -37,7 +37,7 @@ window.Storage = (() => {
   }
 
   function getLanguage() {
-    return localStorage.getItem(LANG_KEY) || 'de';
+    return localStorage.getItem(LANG_KEY) || 'en';
   }
 
   function setLanguage(lang) {

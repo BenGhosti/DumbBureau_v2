@@ -60,8 +60,9 @@ Daten liegen unter `APPDATA_DIR` (Standard `/appdata/dumbbureau/`):
 - `exports/` — PDF-Exports
 - `logs/` — Logs
 
-Frontend (Web-App): Port `8360`, Backend (API): Port `8361`.
-Beide Ports sind über `FRONTEND_PORT` / `BACKEND_PORT` in der `.env` änderbar.
+Frontend (Web-App): Port `8360` (über `FRONTEND_PORT` in der `.env` änderbar).
+Der Backend-Container hat standardmäßig **keinen** Host-Port — nur intern
+über das Compose-Netz von `frontend` erreichbar (siehe unten).
 
 ### Netzwerk-Architektur
 
@@ -71,21 +72,21 @@ nginx-Reverse-Proxy (eigene IP, z. B. via macvlan) auf demselben Host, der
 TLS terminiert und via Cloudflare o. Ä. angebunden sein kann:
 
 ```
-Internet -> Cloudflare -> dein nginx (TLS, eigene IP) -> :8360 (frontend) -> :8361 (backend, intern)
+Internet -> Cloudflare -> dein nginx (TLS, eigene IP) -> :8360 (frontend) -> backend (intern, kein Host-Port)
 ```
 
 `frontend` und `backend` sprechen intern nur reines HTTP — das ist normal
-und erwartet, TLS endet bei deinem externen Proxy. `BACKEND_PORT` (8361)
-ist auf dem Host gemappt, damit du/dein Proxy im Bedarfsfall direkt
-draufkommen, ist aber nirgends im Stack selbst beworben oder verlinkt —
-normaler Traffic läuft immer über `frontend`.
+und erwartet, TLS endet bei deinem externen Proxy. Der Backend-Container
+ist bewusst nicht auf dem Host gemappt, um Port-Kollisionen mit anderen
+Diensten auf demselben Host zu vermeiden; falls du ihn doch mal direkt
+brauchst (Debugging), ergänze `ports: ["<freier-port>:8000"]` unter dem
+`backend`-Service in `docker-compose.yml` selbst.
 
 ## Umgebungsvariablen (`.env`)
 
 | Variable | Beschreibung |
 |---|---|
 | `FRONTEND_PORT` | Host-Port der Web-App (Standard `8360`) |
-| `BACKEND_PORT` | Host-Port der API, nur für direkten/Debug-Zugriff (Standard `8361`) |
 | `SECRET_KEY` | JWT-Signatur (mind. 32 Zeichen, `openssl rand -hex 32`) |
 | `ENCRYPTION_KEY` | Optional, Schlüssel für AES-128-GCM (Fallback: `SECRET_KEY`) |
 | `ADMIN_RECOVERY_SECRET` | Secret für den allerersten (Admin-)User |

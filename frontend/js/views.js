@@ -115,7 +115,15 @@ window.Views = (() => {
         '</td></tr>';
     }).join('');
 
+    const usedCategoryCount = new Set(tasks.map((t) => t.category_id).filter(Boolean)).size;
+    const statRow =
+      '<div class="stat-row">' +
+        '<div class="stat-card"><div class="stat-value">' + tasks.length + '</div><div class="stat-label">' + I18n.t('tasks_this_month') + '</div></div>' +
+        '<div class="stat-card"><div class="stat-value">' + usedCategoryCount + '</div><div class="stat-label">' + I18n.t('categories_used') + '</div></div>' +
+      '</div>';
+
     container.innerHTML =
+      statRow +
       '<div class="toolbar">' +
         '<button id="prev-month" class="btn-secondary">‹</button>' +
         '<strong id="month-label">' + Utils.monthLabel(currentMonth) + '</strong>' +
@@ -554,11 +562,117 @@ window.Views = (() => {
     UI.run(renderUsers);
   }
 
+  // ---------------------------------------------------------------------
+  // Profile / settings (passkey management)
+  // ---------------------------------------------------------------------
+  function passkeyRow(pk) {
+    const meta = I18n.t('created') + ' ' + Utils.formatDate(pk.created_at) +
+      ' · ' + I18n.t('last_used') + ': ' +
+      (pk.last_used_at ? Utils.formatDate(pk.last_used_at) : I18n.t('never_used'));
+    return '<div class="passkey-row" data-id="' + pk.id + '">' +
+      '<svg class="key-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>' +
+        '<path d="M7 11V7a5 5 0 0 1 10 0v4"></path>' +
+        '<circle cx="12" cy="16" r="1.5" fill="currentColor" stroke="none"></circle>' +
+      '</svg>' +
+      '<div class="passkey-info">' +
+        '<div class="passkey-name">' + Utils.escapeHtml(pk.name) + '</div>' +
+        '<div class="passkey-meta">' + meta + '</div>' +
+      '</div>' +
+      '<div class="passkey-actions">' +
+        '<button class="rename-passkey btn-secondary btn-small" data-id="' + pk.id + '" data-name="' + Utils.escapeHtml(pk.name) + '">' + I18n.t('rename_passkey') + '</button>' +
+        '<button class="remove-passkey btn-danger btn-small" data-id="' + pk.id + '">' + I18n.t('remove_passkey') + '</button>' +
+      '</div>' +
+    '</div>';
+  }
+
+  async function renderPasskeyList(listEl) {
+    const passkeys = await Api.get('/auth/passkeys');
+    listEl.innerHTML = passkeys.length === 0
+      ? '<p class="muted">' + I18n.t('no_passkeys') + '</p>'
+      : passkeys.map(passkeyRow).join('');
+    const lastOne = passkeys.length === 1;
+
+    listEl.querySelectorAll('.rename-passkey').forEach((b) => {
+      b.addEventListener('click', () => UI.run(async () => {
+        const current = b.dataset.name;
+        const name = window.prompt(I18n.t('new_passkey_name_prompt'), current);
+        if (!name || !name.trim() || name === current) return;
+        await Api.patch('/auth/passkeys/' + b.dataset.id, { name: name.trim() });
+        UI.toast(I18n.t('passkey_renamed'));
+        renderPasskeyList(listEl);
+      }));
+    });
+
+    listEl.querySelectorAll('.remove-passkey').forEach((b) => {
+      b.addEventListener('click', () => {
+        if (lastOne) {
+          UI.toast(I18n.t('last_passkey_warning'), true);
+          return;
+        }
+        openRemovePasskeyModal(b.dataset.id, listEl);
+      });
+    });
+  }
+
+  function openRemovePasskeyModal(passkeyId, listEl) {
+    UI.openModal({
+      title: I18n.t('remove_passkey_confirm_title'),
+      html:
+        '<p>' + I18n.t('remove_passkey_confirm_desc') + '</p>' +
+        '<div class="modal-actions">' +
+          '<button type="button" class="btn-secondary m-cancel">' + I18n.t('cancel') + '</button>' +
+          '<button type="submit" class="btn-danger">' + I18n.t('remove_passkey_confirm_action') + '</button>' +
+        '</div>',
+      onSubmit: async (form) => {
+        const btn = form.querySelector('button[type="submit"]');
+        UI.setBusy(btn, true);
+        try {
+          await Auth.removePasskey(passkeyId);
+          UI.toast(I18n.t('passkey_removed'));
+          renderPasskeyList(listEl);
+          return true;
+        } finally {
+          UI.setBusy(btn, false);
+        }
+      },
+    });
+  }
+
+  async function profile(container) {
+    const user = Storage.user();
+    container.innerHTML =
+      '<h2>' + I18n.t('profile_title') + '</h2>' +
+      '<div class="card">' +
+        '<h3>' + Utils.escapeHtml(user.username) + '</h3>' +
+      '</div>' +
+      '<div class="card">' +
+        '<div class="toolbar">' +
+          '<h3 style="margin:0">' + I18n.t('passkeys_title') + '</h3>' +
+          '<div class="spacer"></div>' +
+          '<button id="add-passkey" class="btn-primary btn-small">' + I18n.t('add_passkey') + '</button>' +
+        '</div>' +
+        '<p class="muted">' + I18n.t('passkeys_desc') + '</p>' +
+        '<div id="passkey-list" class="passkey-list"><p class="muted">' + I18n.t('loading') + '</p></div>' +
+      '</div>';
+
+    const listEl = container.querySelector('#passkey-list');
+    await renderPasskeyList(listEl);
+
+    container.querySelector('#add-passkey').addEventListener('click', () => UI.run(async () => {
+      const name = window.prompt(I18n.t('new_passkey_name_prompt'), '');
+      await Auth.addPasskey(name);
+      UI.toast(I18n.t('passkey_added'));
+      renderPasskeyList(listEl);
+    }));
+  }
+
   return {
     dashboard,
     categories,
     templates,
     export: exportView,
     admin,
+    profile,
   };
 })();
