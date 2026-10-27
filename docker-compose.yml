@@ -1,17 +1,11 @@
-x-logging: &default-logging
-  driver: "json-file"
-  options:
-    max-size: "10m"
-    max-file: "3"
-
 services:
   backend:
     build: ./backend
     container_name: dumbbureau_backend
-    ports:
-      # Optional direct access to the API for debugging; the web app only needs
-      # the frontend (nginx) which proxies /api/ to this container internally.
-      - "${BACKEND_PORT:-8361}:8000"
+    # No host port mapping: nothing external needs to reach this container
+    # directly. All traffic goes through your own nginx -> frontend ->
+    # backend (Docker-internal only). Removes the host-port collision risk
+    # entirely instead of just moving it to a different number.
     environment:
       - DATABASE_URL=${DATABASE_URL:-sqlite:////appdata/dumbbureau/db.sqlite}
       - APPDATA_DIR=${APPDATA_DIR:-/appdata/dumbbureau}
@@ -19,11 +13,8 @@ services:
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      # Trusted reverse proxies (CIDRs, comma separated). Must contain your
-      # reverse proxy's fixed IP and the Docker bridge range so the internal
-      # frontend->backend hop is recognized as a proxy (for correct real
-      # client IP in rate limiting). Never trust the whole LAN subnet.
-      - TRUSTED_PROXY_IPS=${TRUSTED_PROXY_IPS:-172.16.0.0/12}
+      - SHOW_LANGUAGE_TOGGLE=${SHOW_LANGUAGE_TOGGLE:-false}
+      - TRUSTED_PROXY_IPS=${TRUSTED_PROXY_IPS:-}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8360}
       - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-localhost}
       - WEBAUTHN_RP_NAME=${WEBAUTHN_RP_NAME:-DumbBureau}
@@ -32,31 +23,23 @@ services:
       - ACCESS_TOKEN_TTL_MINUTES=${ACCESS_TOKEN_TTL_MINUTES:-60}
       - INVITE_TOKEN_TTL_DAYS=${INVITE_TOKEN_TTL_DAYS:-7}
       - RECOVERY_TOKEN_TTL_MINUTES=${RECOVERY_TOKEN_TTL_MINUTES:-30}
-      - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED:-true}
-      - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS:-30}
-      - RATE_LIMIT_WINDOW_SECONDS=${RATE_LIMIT_WINDOW_SECONDS:-60}
+      - HOME=/tmp
     volumes:
       - ${APPDATA_DIR:-/appdata/dumbbureau}:/appdata/dumbbureau
     restart: unless-stopped
-    logging: *default-logging
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    user: "99:100"
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
 
   frontend:
     build: ./frontend
     container_name: dumbbureau_frontend
+    # Reached by your own external nginx reverse proxy (macvlan, own IP).
+    # TLS terminates there - this container and the backend only ever speak
+    # plain HTTP inside the Docker network, which is the normal / expected
+    # split for a proxy sitting in front of a compose stack.
     ports:
-      # Your reverse proxy (nginx, TLS) points its upstream at this host port.
       - "${FRONTEND_PORT:-8360}:80"
     depends_on:
       - backend
     restart: unless-stopped
-    logging: *default-logging
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:80/index.html"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
